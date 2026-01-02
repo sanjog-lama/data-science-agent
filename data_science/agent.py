@@ -39,34 +39,83 @@ def initialize_configurations():
         MODEL_CONFIG = get_model_config()
     return MCP_SERVERS, MODEL_CONFIG
 
+def extract_query_from_content(content) -> str:
+    """Extract text from user content."""
+    if content and hasattr(content, 'parts') and content.parts:
+        return content.parts[0].text
+    return ""
+
+def determine_query_type(query: str) -> str:
+    """Determine if query needs retrieval, analysis, or both."""
+    query_lower = query.lower()
+    
+    analysis_keywords = [
+        'analyze', 'analysis', 'trend', 'pattern', 'insight',
+        'visualize', 'chart', 'graph', 'plot', 'compare',
+        'correlation', 'statistic', 'average',
+        'insight', 'identify',
+        'relationship', 'predict', 'forecast'
+    ]
+    
+    retrieval_keywords = [
+        'list', 'show', 'get', 'fetch', 'retrieve', 'data',
+        'tables', 'schema', 'metadata', 'records', 'rows',
+        'columns', 'structure', 'describe'
+    ]
+    
+    has_analysis = any(keyword in query_lower for keyword in analysis_keywords)
+    has_retrieval = any(keyword in query_lower for keyword in retrieval_keywords)
+    
+    if has_analysis and has_retrieval:
+        return "analysis"  # If both, prioritize analysis
+    elif has_analysis:
+        return "analysis"
+    elif has_retrieval:
+        return "retrieval"
+    else:
+        # For ambiguous queries, check context
+        if any(word in query_lower for word in ['data', 'table', 'database', 'sales', 'customer']):
+            return "retrieval"  # Data-related but no clear analysis keyword
+        else:
+            return "analysis"  # Default to analysis for general questions
+
 def root_before_callback(callback_context: CallbackContext) -> None:
     """
-    Root agent callback: Extract user query and store in session state.
+    Root agent callback: Extract user query and determine flow.
     """
     try:
-        # The user message is in user_content, NOT current_message
+        # Extract user query
         user_content = callback_context.user_content
+        user_query = extract_query_from_content(user_content)
         
-        if user_content and hasattr(user_content, 'parts') and user_content.parts:
-            # Get the text from the first part
-            user_query = user_content.parts[0].text
+        if user_query:
             _logger.info(f"Root agent extracted query: '{user_query[:80]}...'")
+            
+            # Determine query type
+            query_type = determine_query_type(user_query)
+            _logger.info(f"Determined query type: {query_type}")
+            
+            # Store in session state for ALL sub-agents to access
+            callback_context.state['original_user_query'] = user_query
+            callback_context.state['current_query'] = user_query
+            callback_context.state['query_type'] = query_type
+            # callback_context.state['query_processed'] = False
+            # callback_context.state['retrieval_completed'] = False
+            
+            # Also store metadata
+            callback_context.state['query_timestamp'] = os.path.getmtime(__file__)
+            
+            _logger.info(f"Root agent stored query in state. Type: {query_type}")
         else:
             user_query = "Unknown query"
             _logger.warning("Could not extract user query from user_content")
-        
-        # Store in session state for ALL sub-agents to access
-        callback_context.state['original_user_query'] = user_query
-        callback_context.state['current_query'] = user_query
-        
-        # Also store metadata
-        callback_context.state['query_timestamp'] = os.path.getmtime(__file__)
-        callback_context.state['query_processed'] = False
-        
-        _logger.info(f"Root agent stored query in state: {user_query}")
+            # callback_context.state['original_user_query'] = user_query
+            # callback_context.state['query_type'] = "retrieval"  # Default
         
     except Exception as e:
         _logger.error(f"Error in root_before_callback: {e}")
+        # callback_context.state['original_user_query'] = "Error extracting query"
+        # callback_context.state['query_type'] = "retrieval"
 
 
 def create_sub_agents() -> tuple:
