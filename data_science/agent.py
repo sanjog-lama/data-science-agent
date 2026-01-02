@@ -3,7 +3,8 @@
 import os
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from datetime import datetime
 from dotenv import load_dotenv
 from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
@@ -11,14 +12,12 @@ from google.adk.tools.agent_tool import AgentTool
 from google.genai import types
 from google.adk.models.lite_llm import LiteLlm
 
-
 # Load environment
 load_dotenv()
 
 # Import sub-agents
 from .sub_agents.retrieval.agent import get_retrieval_agent
-# from .sub_agents.analytics.agent import get_analytics_agent
-
+from .response import StandardResponse, ResponseType
 
 # Import prompts
 from .prompts import get_root_instruction
@@ -45,44 +44,31 @@ def extract_query_from_content(content) -> str:
         return content.parts[0].text
     return ""
 
-def determine_query_type(query: str) -> str:
-    """Determine if query needs retrieval, analysis, or both."""
+def determine_response_type(query: str) -> ResponseType:
+    """Determine response type based on query."""
     query_lower = query.lower()
     
     analysis_keywords = [
         'analyze', 'analysis', 'trend', 'pattern', 'insight',
         'visualize', 'chart', 'graph', 'plot', 'compare',
-        'correlation', 'statistic', 'average',
-        'insight', 'identify',
-        'relationship', 'predict', 'forecast'
+        'correlation', 'statistic', 'average', 'sum', 'total',
+        'distribution', 'top', 'bottom', 'rank', 'percentage'
     ]
     
-    retrieval_keywords = [
-        'list', 'show', 'get', 'fetch', 'retrieve', 'data',
-        'tables', 'schema', 'metadata', 'records', 'rows',
-        'columns', 'structure', 'describe'
+    metadata_keywords = [
+        'list', 'tables', 'schema', 'metadata', 'structure',
+        'describe', 'show tables', 'what tables'
     ]
     
-    has_analysis = any(keyword in query_lower for keyword in analysis_keywords)
-    has_retrieval = any(keyword in query_lower for keyword in retrieval_keywords)
-    
-    if has_analysis and has_retrieval:
-        return "analysis"  # If both, prioritize analysis
-    elif has_analysis:
-        return "analysis"
-    elif has_retrieval:
-        return "retrieval"
+    if any(keyword in query_lower for keyword in analysis_keywords):
+        return ResponseType.ANALYSIS
+    elif any(keyword in query_lower for keyword in metadata_keywords):
+        return ResponseType.METADATA
     else:
-        # For ambiguous queries, check context
-        if any(word in query_lower for word in ['data', 'table', 'database', 'sales', 'customer']):
-            return "retrieval"  # Data-related but no clear analysis keyword
-        else:
-            return "analysis"  # Default to analysis for general questions
+        return ResponseType.RAW_DATA
 
 def root_before_callback(callback_context: CallbackContext) -> None:
-    """
-    Root agent callback: Extract user query and determine flow.
-    """
+    """Root agent callback: Extract user query and determine response type."""
     try:
         # Extract user query
         user_content = callback_context.user_content
@@ -91,34 +77,183 @@ def root_before_callback(callback_context: CallbackContext) -> None:
         if user_query:
             _logger.info(f"Root agent extracted query: '{user_query[:80]}...'")
             
-            # Determine query type
-            query_type = determine_query_type(user_query)
-            _logger.info(f"Determined query type: {query_type}")
+            # Determine response type
+            response_type = determine_response_type(user_query)
+            _logger.info(f"Determined response type: {response_type}")
             
-            # Store in session state for ALL sub-agents to access
+            # Store in session state
             callback_context.state['original_user_query'] = user_query
-            callback_context.state['current_query'] = user_query
-            callback_context.state['query_type'] = query_type
-            # callback_context.state['query_processed'] = False
-            # callback_context.state['retrieval_completed'] = False
+            callback_context.state['response_type'] = response_type.value
+            callback_context.state['query_timestamp'] = datetime.now().isoformat()
             
-            # Also store metadata
-            callback_context.state['query_timestamp'] = os.path.getmtime(__file__)
+            _logger.info(f"Root agent stored query. Response type: {response_type}")
             
-            _logger.info(f"Root agent stored query in state. Type: {query_type}")
-        else:
-            user_query = "Unknown query"
-            _logger.warning("Could not extract user query from user_content")
-            # callback_context.state['original_user_query'] = user_query
-            # callback_context.state['query_type'] = "retrieval"  # Default
-        
     except Exception as e:
         _logger.error(f"Error in root_before_callback: {e}")
-        # callback_context.state['original_user_query'] = "Error extracting query"
-        # callback_context.state['query_type'] = "retrieval"
 
+def root_after_tool_callback(tool, args, tool_context, tool_response):
+    """Format the tool response into standardized format."""
+    try:
+        if not tool_response:
+            return None
+        
+        _logger.info(f"Formatting response from tool: {tool.name if hasattr(tool, 'name') else tool}")
+        
+        # Get response type from state
+        response_type = tool_context.state.get('response_type', ResponseType.RAW_DATA.value)
+        user_query = tool_context.state.get('original_user_query', 'Unknown query')
+        
+        # Parse the tool response (it might already be a dict or a string)
+        if isinstance(tool_response, dict):
+            parsed_response = tool_response
+        elif isinstance(tool_response, str):
+            try:
+                # Try to parse as JSON
+                parsed_response = json.loads(tool_response)
+            except json.JSONDecodeError:
+                # If it's not JSON, treat as text data
+                parsed_response = {"text": tool_response}
+        else:
+            parsed_response = {"data": str(tool_response)}
+        
+        # Create standardized response
+        if response_type == ResponseType.ANALYSIS.value:
+            formatted_response = format_analysis_response(parsed_response, user_query)
+        elif response_type == ResponseType.METADATA.value:
+            formatted_response = format_metadata_response(parsed_response, user_query)
+        else:  # RAW_DATA
+            formatted_response = format_raw_data_response(parsed_response, user_query)
+        
+        # Convert to dict for ADK
+        response_dict = formatted_response.dict()
+        
+        # Log the formatted response
+        _logger.info(f"Formatted response type: {response_type}")
+        
+        # Return the formatted response
+        return response_dict
+        
+    except Exception as e:
+        _logger.error(f"Error in root_after_tool_callback: {e}")
+        # Return error response
+        error_response = StandardResponse(
+            response_type=ResponseType.ERROR,
+            message=f"Error processing response: {str(e)}",
+            error=str(e)
+        )
+        return error_response.dict()
 
-def create_sub_agents() -> tuple:
+def format_analysis_response(data: Dict[str, Any], query: str) -> StandardResponse:
+    """Format analysis response into standardized format."""
+    try:
+        # Extract insights if present
+        insights = []
+        if 'key_insights' in data:
+            insights = data.get('key_insights', [])
+        elif 'insights' in data:
+            insights = data.get('insights', [])
+        
+        # Extract metrics
+        metrics = []
+        if 'computed_metrics' in data:
+            metrics_data = data.get('computed_metrics', {})
+            # Convert metrics to standard format
+            metrics = convert_metrics_to_standard(metrics_data)
+        
+        # Extract visualization
+        visualization = None
+        if 'chart_recommendations' in data:
+            chart_recs = data.get('chart_recommendations', [])
+            if chart_recs:
+                # Use first chart recommendation
+                first_chart = chart_recs[0]
+                visualization = {
+                    "type": first_chart.get('chart_type', 'bar_chart'),
+                    "title": first_chart.get('title', f"Analysis of {query}"),
+                    "data_points": first_chart.get('data_points', []),
+                    "insight": first_chart.get('insight', '')
+                }
+        
+        # Extract recommendations
+        recommendations = []
+        if 'recommendations' in data:
+            recs = data.get('recommendations', [])
+            if isinstance(recs, list):
+                if recs and isinstance(recs[0], dict):
+                    # List of dicts with 'recommendation' key
+                    recommendations = [r.get('recommendation', str(r)) for r in recs]
+                else:
+                    # List of strings
+                    recommendations = [str(r) for r in recs]
+        
+        return StandardResponse(
+            response_type=ResponseType.ANALYSIS,
+            message=f"Analysis of: {query}",
+            data=data,
+            insights=insights,
+            metrics=metrics,
+            visualization=visualization,
+            recommendations=recommendations,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        _logger.error(f"Error formatting analysis response: {e}")
+        return StandardResponse(
+            response_type=ResponseType.ERROR,
+            message=f"Error formatting analysis: {str(e)}",
+            error=str(e)
+        )
+
+def format_raw_data_response(data: Dict[str, Any], query: str) -> StandardResponse:
+    """Format raw data response."""
+    return StandardResponse(
+        response_type=ResponseType.RAW_DATA,
+        message=f"Retrieved data for: {query}",
+        data=data,
+        timestamp=datetime.now().isoformat()
+    )
+
+def format_metadata_response(data: Dict[str, Any], query: str) -> StandardResponse:
+    """Format metadata response."""
+    return StandardResponse(
+        response_type=ResponseType.METADATA,
+        message=f"Metadata for: {query}",
+        data=data,
+        timestamp=datetime.now().isoformat()
+    )
+
+def convert_metrics_to_standard(metrics_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Convert various metric formats to standard format."""
+    standard_metrics = []
+    
+    try:
+        if isinstance(metrics_data, dict):
+            # Handle different metric formats
+            for key, value in metrics_data.items():
+                if isinstance(value, (int, float, str)):
+                    standard_metrics.append({
+                        "title": key.replace('_', ' ').title(),
+                        "value": str(value),
+                        "description": f"{key} metric"
+                    })
+                elif isinstance(value, dict):
+                    # Nested metrics
+                    for sub_key, sub_value in value.items():
+                        if isinstance(sub_value, (int, float, str)):
+                            standard_metrics.append({
+                                "title": f"{key} {sub_key}".replace('_', ' ').title(),
+                                "value": str(sub_value),
+                                "description": f"{key}.{sub_key}"
+                            })
+        
+        return standard_metrics[:10]  # Limit to 10 metrics
+        
+    except Exception as e:
+        _logger.error(f"Error converting metrics: {e}")
+        return []
+
+def create_sub_agents():
     """Create and return all sub-agents with proper configurations."""
     global MCP_SERVERS, MODEL_CONFIG
     
@@ -126,18 +261,13 @@ def create_sub_agents() -> tuple:
     if MCP_SERVERS is None or MODEL_CONFIG is None:
         MCP_SERVERS, MODEL_CONFIG = initialize_configurations()
     
-    # Create retrieval agent with MCP tools and structured output
+    # Create retrieval agent
     retrieval_agent = get_retrieval_agent(
         mcp_servers=MCP_SERVERS,
         model_config=MODEL_CONFIG
     )
-
-    # analytics_agent = get_analytics_agent(
-    #     model_config=MODEL_CONFIG
-    # )
     
     return retrieval_agent
-
 
 def get_root_agent() -> LlmAgent:
     """Create and configure the root orchestrator agent."""
@@ -158,19 +288,17 @@ def get_root_agent() -> LlmAgent:
     
     # Create AgentTools for the orchestrator to use
     retrieval_tool = AgentTool(agent=retrieval_agent)
-    # analytics_tool = AgentTool(agent=analytics_agent)
     
-    # Create the root agent with error handling
+    # Create the root agent with after_tool_callback
     agent = LlmAgent(
         name="data_science_orchestrator",
         model=model_instance,
         instruction=get_root_instruction(),
         description="Orchestrates data retrieval and analysis workflows",
-        # tools=[retrieval_tool, analytics_tool],
         tools=[retrieval_tool],
-        # sub_agents=[retrieval_agent, analytics_agent],
         sub_agents=[retrieval_agent],
         before_agent_callback=root_before_callback,
+        after_tool_callback=root_after_tool_callback,
         generate_content_config=types.GenerateContentConfig(
             temperature=0.1,
             top_p=0.95,
