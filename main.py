@@ -102,7 +102,6 @@ if __name__ == "__main__":
         print(f"Warning: Could not import agent details - {e}")
         print("Starting FastAPI server without agent info display...")
     
-    # Use the PORT environment variable provided by Cloud Run, defaulting to 8080
     port = int(os.environ.get("PORT", 8080))
     print(f"\nStarting server on http://0.0.0.0:{port}")
     print("Press Ctrl+C to stop\n")
