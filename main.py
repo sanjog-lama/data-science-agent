@@ -90,19 +90,13 @@ if __name__ == "__main__":
         print("=" * 70)
         print("\nStarting FastAPI server...")
         print("Agent available via ADK web server:")
-        print("  adk web --agent-module data_science.agent:root_agent")
-        print("\nExample queries:")
-        print("  • 'Get sales data from last quarter'")
-        print("  • 'Analyze customer trends over time'")
-        print("  • 'Create a bar chart of monthly revenue'")
-        print("  • 'Generate a report on product performance'")
         print("=" * 70)
         
     except ImportError as e:
         print(f"Warning: Could not import agent details - {e}")
         print("Starting FastAPI server without agent info display...")
     
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 8000))
     print(f"\nStarting server on http://0.0.0.0:{port}")
     print("Press Ctrl+C to stop\n")
     

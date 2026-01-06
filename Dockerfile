@@ -48,22 +48,17 @@ COPY --chown=appuser:appuser . .
 EXPOSE 8000 8080
 
 # --------------------------
-# Healthcheck for Kubernetes
-# --------------------------
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request, os; port=os.getenv('AGENT_PORT','8000'); urllib.request.urlopen(f'http://localhost:{port}/health')" || exit 1
-
-# --------------------------
 # Entrypoint for multi-mode support
 # --------------------------
 ENTRYPOINT ["/bin/bash", "-c", "\
 set -e; \
-MODE=${AGENT_MODE:-web}; \
+MODE=${AGENT_MODE:-api}; \
 HOST=${AGENT_HOST:-0.0.0.0}; \
 PORT=${AGENT_PORT:-8000}; \
+export PORT=$PORT; \
 echo \"Starting ADK Agent in $MODE mode on $HOST:$PORT\"; \
 case \"$MODE\" in \
-  web) exec adk web --host \"$HOST\" --port \"$PORT\" ;; \
-  api|api_server) exec adk api_server --host \"$HOST\" --port \"$PORT\" ;; \
+  web) export SERVE_WEB_INTERFACE=true && exec python3 main.py ;; \
+  api|api_server) unset SERVE_WEB_INTERFACE && exec python3 main.py ;; \
   *) echo \"Error: Unknown mode $MODE. Use web or api_server\"; exit 1 ;; \
 esac"]

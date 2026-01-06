@@ -3,6 +3,7 @@
 import os
 import json
 import logging
+import requests
 from typing import Dict, Any, List, Optional
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.models.lite_llm import LiteLlm
@@ -52,52 +53,97 @@ def get_model_config() -> Dict[str, Any]:
             "name": "vllm_agent"
         }
 
+def test_mcp_connection(
+    url: str,
+    *,
+    requires_auth: bool = False,
+    auth_token: Optional[str] = None,
+    auth_scheme: str = "Bearer",
+    timeout: int = 3,
+) -> bool:
+    """
+    Test MCP server connectivity.
+
+    Returns True if server is reachable, False if not.
+    """
+    payload = {"jsonrpc": "2.0"}  # minimal JSON-RPC message
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json,text/event-stream",
+    }
+
+    if requires_auth:
+        if not auth_token:
+            _logger.error("MCP auth required but token missing")
+            return False
+        headers["Authorization"] = f"{auth_scheme} {auth_token}"
+
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+            stream=True,  # important for streamable HTTP
+        )
+
+        # Any response <500 is considered reachable
+        if response.status_code >= 500:
+            _logger.error(
+                "MCP server %s returned server error: %s",
+                url,
+                response.status_code,
+            )
+            return False
+
+        _logger.info("MCP server reachable: %s (status=%s)", url, response.status_code)
+        return True
+
+    except requests.exceptions.RequestException as exc:
+        _logger.error("MCP connection failed for %s: %s", url, exc)
+        return False
+
+
 def create_mcp_toolsets(servers: List[Dict[str, Any]]) -> List[McpToolset]:
-    """
-    Create MCP toolsets from server configurations.
-    
-    Args:
-        servers: List of MCP server configurations
-        
-    Returns:
-        List of McpToolset instances
-    """
     toolsets = []
-    
+
     for server in servers:
+        url = server.get("url")
+        if not url:
+            _logger.error("MCP server entry missing 'url'")
+            continue
+
+        requires_auth = server.get("auth", False)
+        token = os.getenv("MCP_AUTH_TOKEN")
+        scheme = os.getenv("MCP_AUTH_SCHEME", "Bearer")
+
+        # Test connection
+        if not test_mcp_connection(
+            url,
+            requires_auth=requires_auth,
+            auth_token=token,
+            auth_scheme=scheme,
+        ):
+            continue
+
+        headers = None
+        if requires_auth:
+            headers = {"Authorization": f"{scheme} {token}"}
+
         try:
-            url = server.get("url")
-            requires_auth = server.get("auth", False)
-            
-            if not url:
-                _logger.error("MCP server entry missing 'url'")
-                continue
-            
-            headers = None
-            if requires_auth:
-                mcp_auth_token = os.getenv("MCP_AUTH_TOKEN")
-                mcp_auth_scheme = os.getenv("MCP_AUTH_SCHEME", "Bearer")
-                
-                if not mcp_auth_token:
-                    _logger.error(f"MCP server {url} requires auth, but MCP_AUTH_TOKEN is not set")
-                    continue
-                
-                headers = {
-                    "Authorization": f"{mcp_auth_scheme} {mcp_auth_token}"
-                }
-            
-            toolset = McpToolset(
-                connection_params=StreamableHTTPConnectionParams(
-                    url=url,
-                    headers=headers
+            toolsets.append(
+                McpToolset(
+                    connection_params=StreamableHTTPConnectionParams(
+                        url=url,
+                        headers=headers
+                    )
                 )
             )
-            toolsets.append(toolset)
             _logger.info(f"Created MCP toolset for: {url}")
-            
         except Exception as e:
-            _logger.error(f"Failed to create MCP toolset: {e}")
-    
+            _logger.error(f"Failed to create MCP toolset for {url}: {e}")
+
     return toolsets
 
 def get_lite_llm_model(model_config: Dict[str, Any]) -> LiteLlm:
@@ -113,3 +159,4 @@ def get_lite_llm_model(model_config: Dict[str, Any]) -> LiteLlm:
             api_base=model_config.get("api_base"),
             api_key=model_config.get("api_key", "EMPTY")
         )
+
