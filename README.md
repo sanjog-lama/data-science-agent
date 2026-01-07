@@ -12,39 +12,41 @@ The key features of the Data Science Multi-Agent include:
 | Feature | Description |
 | --- | --- |
 | **Interaction Type:** | Conversational |
-| **Complexity:**  | Advanced |
 | **Agent Type:**  | Multi-Agent (Root Orchestrator + Sub-Agents) |
 | **Components:**  | MCP Server Integration, Intelligent Routing, Structured Output |
 | **Data Sources:** | PostgreSQL, MSSQL, HubSpot, OpenMetadata (via MCP) |
-| **Model Support:** | Google Gemini, Vertex AI, DeepSeek, Self-Hosted LLMs (vLLM) |
+| **Model Support:** | DeepSeek, Self-Hosted LLMs (vLLM) |
 
 ## Architecture
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ROOT ORCHESTRATOR AGENT                                │
-│  • Analyzes user intent (retrieve vs analyze)           │
-│  • Routes to appropriate sub-agents                     │
-│  • Manages session state and context                    │
+│              ROOT ORCHESTRATOR AGENT                    │
+│ • Analyzes user intent (retrieve vs analyze)            │
+│ • Routes to appropriate sub-agents                      │
+│ • Manages session state and context                     │
 └─────────────────────────────────────────────────────────┘
-                    ↓
-        ┌──────────────────────┐
-        │   User Intent?       │
-        └──────────────────────┘
-         ↓                    ↓
-    RETRIEVE              ANALYZE
-         ↓                    ↓
-┌──────────────────┐   ┌──────────────────┐
-│ RETRIEVAL AGENT  │   │ RETRIEVAL AGENT  │
-│ • Connects to    │   │ • Fetches data   │
-│   MCP servers    │   │ • Stores in state│
-│ • Executes       │   └──────────────────┘
-│   queries        │            ↓
-│ • Returns plain  │   ┌──────────────────┐
-│   text data      │   │ ANALYTICS AGENT  │
-└──────────────────┘   │ • Analyzes data  │
-                       │ • Creates charts │
-                       │ • Generates JSON │
-                       └──────────────────┘
+                              │
+                              ▼
+                     ┌────────────────┐
+                     │  User Intent?  │
+                     └────────────────┘
+                       │           │
+            ┌──────────┘           └──────────┐
+            ▼                                 ▼
+  ┌──────────────────┐             ┌──────────────────┐
+  │  RETRIEVAL AGENT │             │  RETRIEVAL AGENT │
+  │ • Connects to    │             │ • Fetches data   │
+  │   MCP servers    │             │ • Passes data to │
+  │ • Executes       │             │   Analytics Agent│
+  │   queries        │             └──────────────────┘
+  │ • Returns plain  │                        │
+  │   text data      │                        ▼
+  └──────────────────┘             ┌──────────────────┐
+                                   │  ANALYTICS AGENT │
+                                   │ • Analyzes data  │
+                                   │ • Creates charts │
+                                   │ • Generates JSON │
+                                   └──────────────────┘
 ```
 ### Agent Components
 
@@ -85,7 +87,7 @@ The key features of the Data Science Multi-Agent include:
 *   **Advanced Analytics:** Automatic chart generation, statistical analysis, and insight extraction
 *   **Structured Outputs:** Analytics agent produces UI-ready JSON for direct chart rendering
 *   **Context Management:** Session state maintains data flow between agents
-*   **Multi-Model Support:** Works with Google Gemini, Vertex AI, DeepSeek, or self-hosted LLMs via vLLM
+*   **Multi-Model Support:** Works with DeepSeek, or self-hosted LLMs via vLLM
 
 ### Use Cases
 
@@ -101,8 +103,6 @@ The key features of the Data Science Multi-Agent include:
 ### Prerequisites
 
 *   **LLM Configuration:** Choose one of the following options:
-    - **Google AI Studio API key** ([Get one here](https://aistudio.google.com/app/apikey)), OR
-    - **Google Cloud account** with Vertex AI enabled, OR
     - **DeepSeek API key** ([Get one here](https://platform.deepseek.com/)), OR
     - **Self-Hosted LLM** via vLLM (Mistral, Llama, etc.)
 *   **Python 3.12+:** Ensure you have Python 3.12 or later installed
@@ -143,27 +143,13 @@ This command reads the `pyproject.toml` file and installs all necessary dependen
 
 Edit `.env` and configure your model backend (choose ONE option):
 
-**Option 1: Google AI Studio (ML Dev)**
-```bash
-    MODEL_TYPE=google
-    GOOGLE_GENAI_USE_VERTEXAI=0
-    GOOGLE_API_KEY='your-api-key-here'
-```
-
-**Option 2: Google Vertex AI**
-```bash
-    MODEL_TYPE=google
-    GOOGLE_GENAI_USE_VERTEXAI=1
-    # Configure GCP credentials separately via gcloud CLI
-```
-
-**Option 3: DeepSeek**
+**Option 1: DeepSeek**
 ```bash
     MODEL_TYPE=deepseek
     DEEPSEEK_API_KEY='your-deepseek-api-key-here'
 ```
 
-**Option 4: Self-Hosted LLM (vLLM)**
+**Option 2: Self-Hosted LLM (vLLM)**
 ```bash
     MODEL_TYPE=vllm
     VLLM_MODEL_NAME='mistral-large:123b'
@@ -186,8 +172,6 @@ Edit `.env` and configure your model backend (choose ONE option):
 
 | Backend | MODEL_TYPE | Required Variables | Description |
 |---------|------------|-------------------|-------------|
-| **Google AI Studio** | `google` | `GOOGLE_API_KEY` | Cloud-based, easy setup, free tier available |
-| **Google Vertex AI** | `google` | `GOOGLE_GENAI_USE_VERTEXAI=1` | Enterprise-grade, requires GCP setup |
 | **DeepSeek** | `deepseek` | `DEEPSEEK_API_KEY` | Cost-effective, powerful reasoning |
 | **vLLM (Self-Hosted)** | `vllm` | `VLLM_BASE_URL`, `VLLM_MODEL_NAME` | Full control, privacy, no API costs |
 
@@ -234,101 +218,6 @@ Then:
 1. Open your browser to the provided URL (usually `http://localhost:8000`)
 2. Select `data_science` from the agent dropdown
 3. Start chatting with the agent
-
-## Example Agent Interactions
-
-### Example 1: Simple Data Retrieval
-```
-User: List all tables in the PostgreSQL database
-
-Agent: Here are the tables in your database:
-
-1. customers (5,420 rows) - Customer information
-2. orders (12,350 rows) - Order transactions
-3. products (890 rows) - Product catalog
-4. invoices (8,230 rows) - Billing records
-
-Total: 4 tables in schema 'public'
-```
-
-### Example 2: Data Exploration
-```
-User: Show me customers from California
-
-Agent: I found 245 customers from California:
-
-| Customer ID | Name           | Email                | Created    |
-|-------------|----------------|----------------------|------------|
-| 101         | John Doe       | john@example.com     | 2024-01-15 |
-| 102         | Jane Smith     | jane@example.com     | 2024-02-20 |
-| 103         | Bob Johnson    | bob@example.com      | 2024-03-10 |
-...
-
-Total: 245 customers
-```
-
-### Example 3: Trend Analysis with Visualization
-```
-User: Analyze sales trends over the last quarter
-
-Agent: I've analyzed the sales data and created visualizations:
-
-{
-  "analysis_type": "trend",
-  "summary": "Sales show consistent upward trend with 23% growth from Q1 to Q4...",
-  "charts": [{
-    "chart_type": "line",
-    "title": "Quarterly Sales Trend",
-    "data": [
-      {"quarter": "Q1", "sales": 325000},
-      {"quarter": "Q2", "sales": 385000},
-      ...
-    ],
-    "config": {
-      "x_axis": "quarter",
-      "y_axis": "sales",
-      "color": "#8884d8"
-    },
-    "insights": [
-      "Consistent quarter-over-quarter growth averaging 12%",
-      "Q4 sales peaked at $458K, 23% higher than Q1"
-    ]
-  }],
-  "metrics": {
-    "total_sales": 1580000,
-    "growth_rate": 0.23
-  },
-  "recommendations": [
-    "Continue current sales strategy as growth is consistent",
-    "Investigate Q4 success factors for replication"
-  ]
-}
-```
-
-### Example 4: Comparative Analysis
-```
-User: Compare revenue by region and show me a chart
-
-Agent: I've analyzed the regional revenue data:
-
-{
-  "analysis_type": "comparison",
-  "summary": "US region leads in revenue ($2.1M) but APAC shows highest growth...",
-  "charts": [{
-    "chart_type": "bar",
-    "title": "Revenue by Region - 2024",
-    "data": [
-      {"region": "US", "revenue": 2100000},
-      {"region": "EU", "revenue": 1850000},
-      {"region": "APAC", "revenue": 1650000}
-    ],
-    "config": {...},
-    "insights": [...]
-  }],
-  "metrics": {...},
-  "recommendations": [...]
-}
-```
 
 ## Project Structure
 ```
@@ -393,7 +282,6 @@ agent = LlmAgent(
 - **Solution:** 
   - For vLLM: Check that your vLLM server is running at `VLLM_BASE_URL`
   - For DeepSeek: Verify `DEEPSEEK_API_KEY` is valid
-  - For Google: Check `GOOGLE_API_KEY` or GCP credentials
 
 **Issue:** MCP server connection fails
 - **Solution:** 
