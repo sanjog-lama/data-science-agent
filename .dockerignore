@@ -1,0 +1,182 @@
+# ============================================
+# Python-specific ignores
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================
+# Virtual environments and environments
+# ============================================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+.venv*/
+
+# ============================================
+# IDE and editor files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================
+# Package manager files
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================
+# Testing and coverage
+# ============================================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ============================================
+# Documentation
+# ============================================
+docs/_build/
+docs/source/_build/
+
+# ============================================
+# Jupyter Notebook
+# ============================================
+.ipynb_checkpoints
+
+# ============================================
+# Project-specific ignores
+# ============================================
+# Docker and CI/CD
+.docker/
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+docker-compose*.override.yml
+Dockerfile*
+!Dockerfile
+.dockerfile*
+
+# Kubernetes
+k8s/
+kubernetes/
+helm/
+charts/
+*.yaml
+*.yml
+!pyproject.toml
+!uv.lock
+
+# ============================================
+# Git and version control
+# ============================================
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+.gitkeep
+.svn/
+.hg/
+.bzr/
+
+# ============================================
+# Logs and databases
+# ============================================
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+
+# ============================================
+# OS generated files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ============================================
+# ADK specific files
+# ============================================
+# Temporary files and backups
+*.tmp
+*.temp
+*.bak
+agent.bkups.txt
+
+# ============================================
+# Security sensitive files
+# ============================================
+*.pem
+*.key
+*.crt
+*.cert
+secrets.yaml
+secrets.yml
+.env.local
+.env.*.local
+.env.prod
+
+# ============================================
+# Development and debug files
+# ============================================
+debug.log
+*.debug
+*.profile
+*.pid
+
+# ============================================
+# Build artifacts
+# ============================================
+*.exe
+*.dll
+*.bin
+*.out
+*.app
