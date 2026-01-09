@@ -66,7 +66,7 @@ def test_mcp_connection(
 
     Returns True if server is reachable, False if not.
     """
-    payload = {"jsonrpc": "2.0"}  # minimal JSON-RPC message
+    payload = {"jsonrpc": "2.0"}
 
     headers = {
         "Content-Type": "application/json",
@@ -85,7 +85,7 @@ def test_mcp_connection(
             headers=headers,
             json=payload,
             timeout=timeout,
-            stream=True,  # important for streamable HTTP
+            stream=True,
         )
 
         # Any response <500 is considered reachable

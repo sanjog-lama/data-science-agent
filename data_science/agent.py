@@ -16,13 +16,12 @@ load_dotenv()
 from .sub_agents.retrieval.agent import get_retrieval_agent
 from .sub_agents.analytics.agent import get_analytics_agent
 
-# Import prompts
 from .prompts import get_root_instruction
 from .tools import load_mcp_config, get_model_config
 
 _logger = logging.getLogger(__name__)
 
-# Global configurations (loaded once)
+# Global configurations
 MCP_SERVERS = None
 MODEL_CONFIG = None
 
@@ -40,11 +39,10 @@ def root_before_callback(callback_context: CallbackContext) -> None:
     Root agent callback: Extract user query and store in session state.
     """
     try:
-        # The user message is in user_content, NOT current_message
+        # The user message is in user_content
         user_content = callback_context.user_content
         
         if user_content and hasattr(user_content, 'parts') and user_content.parts:
-            # Get the text from the first part
             user_query = user_content.parts[0].text
             _logger.info(f"Root agent extracted query: '{user_query[:80]}...'")
         else:
@@ -68,7 +66,7 @@ def create_sub_agents() -> tuple:
     if MCP_SERVERS is None or MODEL_CONFIG is None:
         MCP_SERVERS, MODEL_CONFIG = initialize_configurations()
     
-    # Create retrieval agent with MCP tools
+    # Create retrieval agent
     retrieval_agent = get_retrieval_agent(
         mcp_servers=MCP_SERVERS,
         model_config=MODEL_CONFIG
@@ -131,7 +129,7 @@ def get_root_agent() -> LlmAgent:
     
     return agent
 
-# Initialize configurations early
+# Initialize configurations
 initialize_configurations()
 
 # Create the root agent instance for export
